@@ -14,8 +14,12 @@ __credits__ = []
 
 import base64
 import os
+import tempfile
 
-import pytest
+from pathlib import Path
+from unittest.mock import patch
+
+from ccai import testbase
 import yaml
 
 from ccai.errors.exceptions import SemanticError
@@ -43,7 +47,7 @@ def test_no_source_is_rejected():
     """
         A resolver with no source names the three valid options.
     """
-    with pytest.raises(SemanticError) as caught:
+    with testbase.raises(SemanticError) as caught:
         KubeConfigResolver()
     assert "kubeconfig_path" in str(caught.value)
     return
@@ -53,7 +57,7 @@ def test_multiple_sources_are_rejected():
     """
         Ambiguous sources are refused rather than silently ranked.
     """
-    with pytest.raises(SemanticError):
+    with testbase.raises(SemanticError):
         KubeConfigResolver(kubeconfig_path="/tmp/kubeconfig",
                            in_cluster=True)
     return
@@ -116,7 +120,7 @@ def test_unknown_context_lists_the_available_ones():
         An unknown context names what WAS available — the error a typo
         actually needs.
     """
-    with pytest.raises(SemanticError) as caught:
+    with testbase.raises(SemanticError) as caught:
         KubeConfigResolver(kubeconfig_dict=_token_config(),
                            context="ghost").resolve()
     message = str(caught.value)
@@ -188,7 +192,7 @@ def test_credential_plugin_is_reported_unsupported():
     config["users"] = [{"name": "lab-user",
                         "user": {"exec": {"command": "aws"}}}]
 
-    with pytest.raises(SemanticError) as caught:
+    with testbase.raises(SemanticError) as caught:
         KubeConfigResolver(kubeconfig_dict=config).resolve()
     assert "exec" in str(caught.value)
     return
@@ -202,7 +206,7 @@ def test_user_without_credential_is_rejected():
     config = _token_config()
     config["users"] = [{"name": "lab-user", "user": {}}]
 
-    with pytest.raises(SemanticError):
+    with testbase.raises(SemanticError):
         KubeConfigResolver(kubeconfig_dict=config).resolve()
     return
 
@@ -217,51 +221,53 @@ def test_available_contexts_enumerates_names():
     return
 
 
-def test_kubeconfig_path_is_read_from_disk(tmp_path):
+def test_kubeconfig_path_is_read_from_disk():
     """
         A path source is read and parsed.
     """
-    config_file = tmp_path / "kubeconfig"
-    config_file.write_text(yaml.safe_dump(_token_config()))
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        config_file = Path(tmp_dir) / "kubeconfig"
+        config_file.write_text(yaml.safe_dump(_token_config()))
 
-    resolution = KubeConfigResolver(
-        kubeconfig_path=str(config_file)).resolve()
-    assert resolution.token == "s3cr3t-token"
+        resolution = KubeConfigResolver(
+            kubeconfig_path=str(config_file)).resolve()
+        assert resolution.token == "s3cr3t-token"
     return
 
 
-def test_in_cluster_requires_the_service_environment(monkeypatch):
+def test_in_cluster_requires_the_service_environment():
     """
         The in-cluster context is refused when the process is not running
         in a cluster.
     """
-    monkeypatch.delenv(IN_CLUSTER_HOST_VARIABLE, raising=False)
-    monkeypatch.delenv(IN_CLUSTER_PORT_VARIABLE, raising=False)
+    # patch.dict snapshots and restores os.environ, so removing the two
+    # variables cannot leak into another test in the same process.
+    with patch.dict(os.environ):
+        os.environ.pop(IN_CLUSTER_HOST_VARIABLE, None)
+        os.environ.pop(IN_CLUSTER_PORT_VARIABLE, None)
 
-    with pytest.raises(SemanticError):
-        KubeConfigResolver(in_cluster=True).resolve()
+        with testbase.raises(SemanticError):
+            KubeConfigResolver(in_cluster=True).resolve()
     return
 
 
-def test_in_cluster_builds_the_service_url(monkeypatch):
+def test_in_cluster_builds_the_service_url():
     """
         The in-cluster context composes its URL from the injected service
         environment.
     """
-    monkeypatch.setenv(IN_CLUSTER_HOST_VARIABLE, "10.96.0.1")
-    monkeypatch.setenv(IN_CLUSTER_PORT_VARIABLE, "443")
-
-    resolution = KubeConfigResolver(in_cluster=True).resolve()
-    assert resolution.server_url == "https://10.96.0.1:443"
+    with patch.dict(os.environ, {IN_CLUSTER_HOST_VARIABLE: "10.96.0.1",
+                                 IN_CLUSTER_PORT_VARIABLE: "443"}):
+        resolution = KubeConfigResolver(in_cluster=True).resolve()
+        assert resolution.server_url == "https://10.96.0.1:443"
     return
 
 
-def test_in_cluster_has_no_contexts(monkeypatch):
+def test_in_cluster_has_no_contexts():
     """
         In-cluster operation has no kubeconfig contexts.
     """
-    monkeypatch.setenv(IN_CLUSTER_HOST_VARIABLE, "10.96.0.1")
-    monkeypatch.setenv(IN_CLUSTER_PORT_VARIABLE, "443")
-
-    assert KubeConfigResolver(in_cluster=True).available_contexts() == []
+    with patch.dict(os.environ, {IN_CLUSTER_HOST_VARIABLE: "10.96.0.1",
+                                 IN_CLUSTER_PORT_VARIABLE: "443"}):
+        assert KubeConfigResolver(in_cluster=True).available_contexts() == []
     return

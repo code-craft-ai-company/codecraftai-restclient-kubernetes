@@ -12,7 +12,7 @@ __copyright__ = "Copyright 2026, Code Craft AI LLC"
 __credits__ = []
 
 
-import pytest
+from ccai import testbase
 
 from ccai.restclient.kubernetes.apiobject import ApiObject
 from ccai.restclient.kubernetes.kubeconfigresolver import (
@@ -233,7 +233,7 @@ def test_failure_status_raises_with_status_reason_and_body():
                                                  "message": "no svc"}))
     client = _client(session=session)
 
-    with pytest.raises(KubernetesApiRequestError) as caught:
+    with testbase.raises(KubernetesApiRequestError) as caught:
         client.core_v1.read_namespaced_service(name="web", namespace="lab")
 
     error = caught.value
