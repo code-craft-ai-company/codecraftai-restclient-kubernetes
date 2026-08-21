@@ -25,7 +25,7 @@ from ccai.restclient.kubernetes.kubernetesrestclient import (
     KubernetesRestClient, PATCH_CONTENT_TYPE
 )
 
-from ccai.tests.restclient.kubernetes.fakesession import (
+from .fakesession import (
     FakeResponse, FakeSession
 )
 
