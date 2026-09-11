@@ -150,9 +150,13 @@ def test_client_certificate_auth_writes_pem_files():
     assert resolution.token is None
     assert os.path.exists(resolution.client_cert_path)
     assert os.path.exists(resolution.client_key_path)
-    # A private key must not be world readable.
-    mode = os.stat(resolution.client_key_path).st_mode & 0o777
-    assert mode == 0o600
+    # A private key must not be world readable.  POSIX permission bits are
+    # the only thing ``os.chmod(path, 0o600)`` can set; on Windows chmod
+    # merely toggles the read-only attribute and ``st_mode`` reports 0o666,
+    # so the bit check is meaningful only off Windows.
+    if os.name != "nt":
+        mode = os.stat(resolution.client_key_path).st_mode & 0o777
+        assert mode == 0o600
     return
 
 
