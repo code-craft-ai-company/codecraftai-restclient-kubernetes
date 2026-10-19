@@ -1,6 +1,6 @@
-=====================================
+======================================
 Code Craft AI - Kubernetes REST client
-=====================================
+======================================
 
 A pure-Python client for the Kubernetes API server.
 
